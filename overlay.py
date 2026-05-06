@@ -94,11 +94,11 @@ class MeetAssistOverlay:
             root.wm_attributes("-transparentcolor", BG_TRANSPARENT)
         elif os_name == "Darwin":
             root.wm_attributes("-transparent", True)
-            root.wm_attributes("-alpha", self.cfg.get("overlay_opacity", 0.92))
+            root.wm_attributes("-alpha", self.cfg.get("overlay_opacity", 0.75))
         else:
             # Linux: use alpha transparency
             try:
-                root.wm_attributes("-alpha", self.cfg.get("overlay_opacity", 0.92))
+                root.wm_attributes("-alpha", self.cfg.get("overlay_opacity", 0.75))
             except Exception:
                 pass
 
@@ -107,7 +107,10 @@ class MeetAssistOverlay:
         x = self.cfg.get("overlay_x", 40)
         y = self.cfg.get("overlay_y", 40)
         root.geometry(f"{w}x{h}+{x}+{y}")
-        root.resizable(False, False)
+        root.resizable(True, True)
+        root.minsize(300, 200)
+        # Save size to config whenever the window is resized
+        root.bind("<Configure>", self._on_resize)
 
     def _build_ui(self) -> None:
         font_family = _get_font_family()
@@ -150,6 +153,36 @@ class MeetAssistOverlay:
         )
         self._status_label.pack(side=tk.RIGHT, padx=(0, 4))
 
+        # ── Opacity slider (inline, right of status) ───────────────────────────
+        self._opacity_var = tk.DoubleVar(
+            value=self.cfg.get("overlay_opacity", 0.75)
+        )
+        opacity_slider = tk.Scale(
+            header,
+            from_=0.15, to=1.0,
+            resolution=0.05,
+            orient=tk.HORIZONTAL,
+            variable=self._opacity_var,
+            bg=PANEL_BG,
+            fg=DIM_COLOR,
+            troughcolor=PANEL_BORDER,
+            activebackground=ACCENT,
+            highlightthickness=0,
+            showvalue=False,
+            sliderlength=10,
+            width=6,
+            length=60,
+            command=self._on_opacity_change,
+            cursor="sb_h_double_arrow",
+        )
+        opacity_slider.pack(side=tk.RIGHT, padx=(0, 6))
+
+        opacity_icon = tk.Label(
+            header, text="◐", bg=PANEL_BG, fg=DIM_COLOR,
+            font=(font_family, font_size - 2),
+        )
+        opacity_icon.pack(side=tk.RIGHT)
+
         # ── Divider ───────────────────────────────────────────────────────────
         divider = tk.Frame(panel, bg=PANEL_BORDER, height=1)
         divider.pack(fill=tk.X, pady=(0, 8))
@@ -186,30 +219,46 @@ class MeetAssistOverlay:
         tk.Frame(bottom, bg=PANEL_BORDER, height=1).pack(fill=tk.X, pady=(0, 6))
 
         self._transcript_var = tk.StringVar(value="Waiting for audio…")
-        transcript_lbl = tk.Label(
+        self._transcript_lbl = tk.Label(
             bottom,
             textvariable=self._transcript_var,
             bg=PANEL_BG,
             fg=DIM_COLOR,
             font=(font_family, max(font_size - 4, 9)),
             anchor="w",
-            wraplength=440,
+            wraplength=400,
             justify=tk.LEFT,
         )
-        transcript_lbl.pack(fill=tk.X)
+        self._transcript_lbl.pack(fill=tk.X)
 
-        # ── Hotkey hint ───────────────────────────────────────────────────────
+        # ── Bottom row: hotkey hint + resize grip ─────────────────────────────
+        bottom_row = tk.Frame(bottom, bg=PANEL_BG)
+        bottom_row.pack(fill=tk.X, pady=(3, 0))
+
         hint_lbl = tk.Label(
-            bottom,
+            bottom_row,
             text="C-S-A: Ask  •  C-S-C: Clear  •  C-S-H: Hide  •  C-S-Q: Quit",
             bg=PANEL_BG,
             fg="#3a3a3a",
             font=(font_family, max(font_size - 5, 8)),
             anchor="w",
         )
-        hint_lbl.pack(fill=tk.X, pady=(3, 0))
+        hint_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # ── Drag bindings ─────────────────────────────────────────────────────
+        # ── Resize grip (bottom-right corner) ─────────────────────────────────
+        grip = tk.Label(
+            bottom_row,
+            text="⠿",
+            bg=PANEL_BG,
+            fg="#3a3a3a",
+            font=(font_family, 11),
+            cursor="size_nw_se",
+        )
+        grip.pack(side=tk.RIGHT, padx=(4, 0))
+        grip.bind("<ButtonPress-1>",  self._on_resize_start)
+        grip.bind("<B1-Motion>",      self._on_resize_motion)
+
+        # ── Drag bindings (header + empty areas only, not the grip) ───────────
         for widget in [outer, panel, header, logo_lbl, divider, bottom, hint_lbl]:
             widget.bind("<ButtonPress-1>",   self._on_drag_start)
             widget.bind("<B1-Motion>",       self._on_drag_motion)
@@ -230,9 +279,46 @@ class MeetAssistOverlay:
         w = self.root.winfo_width()
         h = self.root.winfo_height()
         self.root.geometry(f"{w}x{h}+{x}+{y}")
-        # Save position to config
         self.cfg["overlay_x"] = x
         self.cfg["overlay_y"] = y
+
+    # ── Resize handlers (grip corner) ─────────────────────────────────────────
+
+    def _on_resize_start(self, event) -> None:
+        self._resize_start_x = event.x_root
+        self._resize_start_y = event.y_root
+        self._resize_start_w = self.root.winfo_width()
+        self._resize_start_h = self.root.winfo_height()
+
+    def _on_resize_motion(self, event) -> None:
+        dx = event.x_root - self._resize_start_x
+        dy = event.y_root - self._resize_start_y
+        new_w = max(300, self._resize_start_w + dx)
+        new_h = max(200, self._resize_start_h + dy)
+        x = self.root.winfo_x()
+        y = self.root.winfo_y()
+        self.root.geometry(f"{new_w}x{new_h}+{x}+{y}")
+
+    def _on_resize(self, event) -> None:
+        """Called on any <Configure> event — save new size to config."""
+        if event.widget is self.root:
+            self.cfg["overlay_width"]  = event.width
+            self.cfg["overlay_height"] = event.height
+            # Keep transcript label wraplength in sync
+            try:
+                self._transcript_lbl.configure(wraplength=max(100, event.width - 80))
+            except AttributeError:
+                pass
+
+    # ── Opacity handler ───────────────────────────────────────────────────────
+
+    def _on_opacity_change(self, value) -> None:
+        alpha = float(value)
+        try:
+            self.root.wm_attributes("-alpha", alpha)
+        except Exception:
+            pass
+        self.cfg["overlay_opacity"] = round(alpha, 2)
 
     # ── Screen-capture exclusion ──────────────────────────────────────────────
 

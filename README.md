@@ -221,3 +221,9 @@ SELECT timestamp, speaker, text FROM transcripts WHERE session_id = 1;
 ## License
 
 MIT — free to use, modify, and distribute.
+
+
+## Single command start 
+
+- bash run.sh          # Normal launch
+- bash run.sh --reset  # Nuke .venv and reinstall everything fresh

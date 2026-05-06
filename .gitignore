@@ -1,11 +1,19 @@
 __pycache__/
 *.py[cod]
 *.pyo
-.env
 *.egg-info/
 dist/
 build/
 .DS_Store
 
-# App data (contains API key — never commit!)
-~/.meetassist/
+# ── Secrets — NEVER commit these ──────────────────────────────
+.env
+
+# ── Virtual environment ────────────────────────────────────────
+.venv/
+venv/
+
+# ── App runtime data (contains API key & session DB) ──────────
+# ~/.meetassist/ lives outside the repo, but guard against stray symlinks
+sessions.db
+config.json

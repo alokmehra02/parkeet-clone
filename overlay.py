@@ -246,13 +246,19 @@ class MeetAssistOverlay:
         hint_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # ── Resize grip (bottom-right corner) ─────────────────────────────────
+        # Cursor name differs by platform: X11 uses "bottom_right_corner"
+        _resize_cursor = (
+            "bottom_right_corner"
+            if platform.system() != "Windows"
+            else "size_nw_se"
+        )
         grip = tk.Label(
             bottom_row,
             text="⠿",
             bg=PANEL_BG,
             fg="#3a3a3a",
             font=(font_family, 11),
-            cursor="size_nw_se",
+            cursor=_resize_cursor,
         )
         grip.pack(side=tk.RIGHT, padx=(4, 0))
         grip.bind("<ButtonPress-1>",  self._on_resize_start)
